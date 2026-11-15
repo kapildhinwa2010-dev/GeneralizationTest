@@ -5,8 +5,10 @@ from generalizationtest import (
     analyze_model,
     effective_rank,
     find_bottlenecks,
+    generalization_report,
     layer_report,
     layer_spectrum,
+    spectrum_gap,
 )
 
 
@@ -76,3 +78,44 @@ def test_find_bottlenecks_orders_by_rank():
 def test_layer_report_rejects_1d():
     with pytest.raises(ValueError):
         layer_report(np.zeros(5))
+
+
+# --- seen vs unseen (generalization-specific) ---
+
+
+def test_spectrum_gap_zero_for_identical():
+    W = _low_rank(rank=4)
+    gap = spectrum_gap(W, W)
+    assert gap["total_gap"] == 0
+    assert gap["spectral_norm_ratio"] == pytest.approx(1.0)
+
+
+def test_spectrum_gap_positive_for_different_rank():
+    seen = _low_rank(rank=8, seed=1)
+    unseen = _low_rank(rank=2, seed=1)
+    gap = spectrum_gap(seen, unseen)
+    assert gap["total_gap"] > 0
+
+
+def test_spectrum_gap_rejects_bad_energy():
+    W = np.eye(4)
+    with pytest.raises(ValueError):
+        spectrum_gap(W, W, energies=(1.5,))
+
+
+def test_generalization_report_flags_most_unstable():
+    seen = {"stable": np.eye(16), "unstable": _low_rank(rank=8, seed=2)}
+    unseen = {"stable": np.eye(16), "unstable": _low_rank(rank=2, seed=2)}
+    report = generalization_report(seen, unseen)
+    assert report["most_unstable"] == "unstable"
+    assert set(report["layers"]) == {"stable", "unstable"}
+
+
+def test_generalization_report_rejects_mismatched_names():
+    with pytest.raises(ValueError):
+        generalization_report({"a": np.eye(4)}, {"b": np.eye(4)})
+
+
+def test_generalization_report_rejects_empty():
+    with pytest.raises(ValueError):
+        generalization_report({}, {"a": np.eye(4)})
